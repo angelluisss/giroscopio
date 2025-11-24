@@ -5,6 +5,7 @@ let currentAudio = null;
 let lastUpsideDownStart = 0;
 let isUpsideDown = false;
 
+
 let lastAudioTime = 0; // cooldown de 2 segundos
 let COOLDOWN = 2000;   // en ms
 let REPOSO_TIME = 25000; // 25 s
