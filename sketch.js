@@ -5,6 +5,7 @@ let gamma = 0;
 
 function preload() {
   sound = loadSound('cancion.mp3');
+  
 }
 
 function setup() {
