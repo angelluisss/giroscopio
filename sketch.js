@@ -8,6 +8,7 @@ function preload() {
 }
 
 function setup() {
+  
   createCanvas(windowWidth, windowHeight);
   textSize(16);
   textAlign(LEFT, TOP);
@@ -36,6 +37,29 @@ function draw() {
   } else {
     if (sound.isPlaying()) {
       sound.stop();
+      function setup() {
+  createCanvas(windowWidth, windowHeight);
+  textSize(16);
+  textAlign(LEFT, TOP);
+
+  let btn = createButton("Activar audio");
+  btn.position(20, 120);
+  btn.mousePressed(() => {
+    userStartAudio();
+    console.log("Audio activado");
+  });
+
+  if (DeviceOrientationEvent.requestPermission) {
+    DeviceOrientationEvent.requestPermission().then(response => {
+      if (response === 'granted') {
+        window.addEventListener('deviceorientation', readOrientation);
+      }
+    });
+  } else {
+    window.addEventListener('deviceorientation', readOrientation);
+  }
+}
+
     }
   }
 }
