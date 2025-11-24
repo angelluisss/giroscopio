@@ -5,6 +5,10 @@ let currentAudio = null;
 let lastUpsideDownStart = 0;
 let isUpsideDown = false;
 
+let lastAudioTime = 0; // cooldown de 2 segundos
+let COOLDOWN = 2000;   // en ms
+let REPOSO_TIME = 25000; // 25 s
+
 function preload() {
   salto = loadSound("audiosalto.mp3");
   bocaabajo = loadSound("audiobocaabajo.mp3");
@@ -18,20 +22,22 @@ function setup() {
   boton.position(20, 20);
   boton.mousePressed(() => {
     getAudioContext().resume();
-
     if (typeof DeviceOrientationEvent !== "undefined" &&
         typeof DeviceOrientationEvent.requestPermission === "function") {
       DeviceOrientationEvent.requestPermission();
     }
   });
+
+  textSize(26);
+  fill(255);
 }
 
 function draw() {
   background(30);
-  fill(255);
-  textSize(26);
+
   text("Beta: " + nf(betaValue, 1, 2), 20, 80);
 
+  drawUpsideDownTimer();
   handleLogic();
 }
 
@@ -41,6 +47,11 @@ function deviceMoved() {
 
 function handleLogic() {
   let now = millis();
+
+  // -------------------------
+  // COOLDOWN GLOBAL
+  // -------------------------
+  if (now - lastAudioTime < COOLDOWN) return;
 
   // No permitir overlap de audios
   if (currentAudio && currentAudio.isPlaying()) return;
@@ -64,16 +75,15 @@ function handleLogic() {
   // 165°–195° = boca abajo
   // -----------------------------
   if (betaValue >= 165 && betaValue <= 195) {
-    
+
     if (!isUpsideDown) {
-      // Entró en posición boca abajo
+      // Acaba de entrar boca abajo
       isUpsideDown = true;
       lastUpsideDownStart = now;
       playOnce(bocaabajo);
-      
     } else {
-      // Lleva tiempo boca abajo → 25s = REPOSO
-      if (now - lastUpsideDownStart > 25000) {
+      // Lleva tiempo boca abajo → ¿ya pasaron 25s?
+      if (now - lastUpsideDownStart > REPOSO_TIME) {
         playOnce(reposo);
       }
     }
@@ -81,7 +91,7 @@ function handleLogic() {
     return;
   }
 
-  // Si sale del rango boca abajo → reinicia contador
+  // Si sale del rango boca abajo → reiniciar
   resetUpsideDownState();
 }
 
@@ -93,5 +103,21 @@ function playOnce(sound) {
   if (!sound.isPlaying()) {
     currentAudio = sound;
     sound.play();
+    lastAudioTime = millis();  // aplicar cooldown
+  }
+}
+
+function drawUpsideDownTimer() {
+  if (!isUpsideDown) return;
+
+  let remaining = (REPOSO_TIME - (millis() - lastUpsideDownStart)) / 1000;
+
+  if (remaining > 0) {
+    fill(200, 240, 255);
+    text(
+      "Reposo en: " + nf(remaining, 1, 1) + " s",
+      20,
+      130
+    );
   }
 }
