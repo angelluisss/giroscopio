@@ -1,146 +1,138 @@
 let salto, bocaabajo, reposo;
-let betaValue = 0;
 
-// Estados
+let beta = 0;
 
-let currentAudio = null;
-let isUpsideDown = false;
-let lastUpsideDownStart = 0;
-
-// Tiempos
+let isPlaying = false;
 let lastAudioTime = 0;
-let COOLDOWN = 2000;
-let REPOSO_TIME = 25000;
+let cooldown = 2000; // 2 segundos
 
-// Visual
-let bgColor;
-let targetColor;
+let isBocaAbajo = false;
+let tiempoInicioBocaAbajo = null;
+let tiempoBocaAbajo = 0;
 
 function preload() {
   salto = loadSound("audiosalto.mp3");
-  bocaabajo = loadSound("audiobocaabajo.mp3");
+  bocaabajo = loadSound("bocaabajo.mp3");
   reposo = loadSound("audioreposo.mp3");
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-
-  bgColor = color(40);
-  targetColor = color(40);
-
-  let boton = createButton("Activar sensores y audio");
-  boton.position(20, 20);
-  boton.mousePressed(() => {
-    userStartAudio();
-    if (typeof DeviceOrientationEvent !== "undefined" &&
-        typeof DeviceOrientationEvent.requestPermission === "function") {
-      DeviceOrientationEvent.requestPermission();
-    }
-  });
-
-  textFont("Helvetica");
+  textAlign(CENTER, CENTER);
   textSize(24);
-  textAlign(LEFT, TOP);
+
+  if (typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission === "function") {
+
+    let boton = createButton("Activar giroscopio");
+    boton.center();
+    boton.mousePressed(() => {
+      DeviceOrientationEvent.requestPermission().then(permission => {
+        if (permission === "granted") boton.remove();
+      });
+    });
+  }
+}
+
+function deviceOrientationChanged() {
+  beta = rotationX; // rotación vertical
 }
 
 function draw() {
-  bgColor = lerpColor(bgColor, targetColor, 0.05);
-  background(bgColor);
+  background(30);
 
-  fill(255);
-  text("Beta: " + nf(betaValue, 1, 1), 20, 90);
+  const ahora = millis();
 
-  drawUpsideDownTimer();
-  handleLogic();
-}
+  let estado = "normal";
 
-function deviceMoved() {
-  betaValue = rotationX;
-}
+  // ---------------------------------------------------------
+  // DETECCIÓN DE POSTURAS
+  // ---------------------------------------------------------
 
-function handleLogic() {
-  let now = millis();
+  // 1️⃣ SALTO → beta > 45 y beta < 180 (vertical hacia adelante)
+  let detectaSalto = beta > 45 && beta < 180;
 
-  // Interrupción inmediata del audio de reposo
-  if (currentAudio === reposo && !(betaValue >= 165 && betaValue <= 195)) {
-    reposo.stop();
-    currentAudio = null;
-    isUpsideDown = false;
+  // 2️⃣ BOCA ABAJO → beta entre 165° y 195°
+  isBocaAbajo = beta > 165 && beta < 195;
+
+  // ---------------------------------------------------------
+  // CONTROL DEL TIEMPO BOCA ABAJO
+  // ---------------------------------------------------------
+  if (isBocaAbajo) {
+    if (tiempoInicioBocaAbajo === null) {
+      tiempoInicioBocaAbajo = millis();
+    }
+    tiempoBocaAbajo = Math.floor((millis() - tiempoInicioBocaAbajo) / 1000);
+  } else {
+    tiempoInicioBocaAbajo = null;
+    tiempoBocaAbajo = 0;
+
+    // Si sale de la postura, detener audio reposo
+    if (reposo.isPlaying()) reposo.stop();
   }
 
-  if (currentAudio && currentAudio.isPlaying()) return;
+  // ---------------------------------------------------------
+  // REPRODUCCIÓN DE AUDIOS (con cooldown + no solapar)
+  // ---------------------------------------------------------
+  if (!isPlaying && ahora - lastAudioTime > cooldown) {
 
-  if (now - lastAudioTime < COOLDOWN) return;
+    // 1️⃣ BOCA ABAJO inmediato → bocaabajo.mp3
+    if (isBocaAbajo && !bocaabajo.isPlaying() && tiempoBocaAbajo < 25) {
+      reproducirAudio(bocaabajo);
+      estado = "boca abajo";
+    }
 
-  // REGLA DE SALTO
-  if (betaValue > 45 && betaValue < 180) {
-    if (!(betaValue >= 165 && betaValue <= 195)) {
-      playOnce(salto);
-      setColor(color(255, 220, 0));
-      resetUpsideDownState();
-      return;
+    // 2️⃣ REPOSO → si lleva 25 segundos boca abajo
+    else if (isBocaAbajo && tiempoBocaAbajo >= 25 && !reposo.isPlaying()) {
+      reproducirAudio(reposo);
+      estado = "reposo";
+    }
+
+    // 3️⃣ SALTO → si se inclina más de 45°
+    else if (detectaSalto) {
+      reproducirAudio(salto);
+      estado = "salto";
     }
   }
 
-  // REGLA BOCA ABAJO
-  if (betaValue >= 165 && betaValue <= 195) {
-    if (!isUpsideDown) {
-      isUpsideDown = true;
-      lastUpsideDownStart = now;
-      playOnce(bocaabajo);
-      setColor(color(40, 140, 250));
-    } else {
-      if (now - lastUpsideDownStart >= REPOSO_TIME) {
-        playOnce(reposo);
-        setColor(color(150, 70, 200));
-      }
-    }
-    return;
+  // ---------------------------------------------------------
+  // VISUALIZADOR DEL TIEMPO BOCA ABAJO
+  // ---------------------------------------------------------
+  if (isBocaAbajo) {
+    if (tiempoBocaAbajo < 10) fill(0, 255, 0);
+    else if (tiempoBocaAbajo < 20) fill(255, 200, 0);
+    else fill(255, 0, 0);
+
+    text("Tiempo boca abajo: " + tiempoBocaAbajo + "s", width / 2, height - 50);
+  } else {
+    fill(180);
+    text("Tiempo boca abajo: 0s", width / 2, height - 50);
   }
 
-  resetUpsideDownState();
-  setColor(color(40));
-}
-
-function playOnce(soundFile) {
-  if (currentAudio && currentAudio.isPlaying()) {
-    currentAudio.stop();
-  }
-
-  currentAudio = soundFile;
-  soundFile.play();
-  lastAudioTime = millis();
-}
-
-function resetUpsideDownState() {
-  isUpsideDown = false;
-}
-
-function drawUpsideDownTimer() {
-  if (!isUpsideDown) return;
-
-  let remaining = REPOSO_TIME - (millis() - lastUpsideDownStart);
-  if (remaining < 0) remaining = 0;
-
-  let seconds = nf(remaining / 1000, 1, 1);
-
-  push();
-  translate(width / 2, height / 2);
-
-  noFill();
-  stroke(255);
-  strokeWeight(8);
-
-  let angle = map(remaining, 0, REPOSO_TIME, 0, TWO_PI);
-  arc(0, 0, 180, 180, -HALF_PI, -HALF_PI + angle);
-
-  noStroke();
+  // ---------------------------------------------------------
+  // VISUAL DE ESTADO Y ÁNGULO
+  // ---------------------------------------------------------
   fill(255);
-  textAlign(CENTER, CENTER);
-  text("Reposo en\n" + seconds + " s", 0, 0);
-  pop();
+  text("β = " + nf(beta, 1, 1), width / 2, height / 2 - 50);
+  text("Estado: " + estado, width / 2, height / 2);
 }
 
-function setColor(col) {
-  targetColor = col;
+function reproducirAudio(audio) {
+  if (isPlaying) return;
+
+  detenerTodos();
+
+  audio.play();
+  isPlaying = true;
+
+  audio.onended(() => {
+    isPlaying = false;
+    lastAudioTime = millis();
+  });
+}
+
+function detenerTodos() {
+  if (salto.isPlaying()) salto.stop();
+  if (bocaabajo.isPlaying()) bocaabajo.stop();
+  if (reposo.isPlaying()) reposo.stop();
 }
