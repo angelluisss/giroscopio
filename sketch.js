@@ -1,129 +1,94 @@
-let sound;
-let salto;
-let aceleracion;
-let bocaabajo;
-let reposo;
+let salto, bocaabajo, reposo;
+let betaValue = 0;
 
-let alpha = 0;
-let beta = 0;
-let gamma = 0;
-
-let bocaAbajoStart = null; 
-let currentState = ""; // 👉 previene solapamientos
-let reposoPlayed = false;
+let currentAudio = null;
+let lastOrientationStart = 0;
+let inUpsideDown = false;
 
 function preload() {
-  sound = loadSound('cancion.mp3');
-  salto = loadSound('audiosalto.mp3');
-  aceleracion = loadSound('audioaceleracion.mp3');
-  bocaabajo = loadSound('audiobocaabajo.mp3');
-  reposo = loadSound('audioreposo.mp3');
+  salto = loadSound("audiosalto.mp3");
+  bocaabajo = loadSound("audiobocaabajo.mp3");
+  reposo = loadSound("audioreposo.mp3");
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  textSize(16);
-  textAlign(LEFT, TOP);
 
-  let btn = createButton("🔊 Activar audio");
-  btn.position(20, 120);
-  btn.mousePressed(() => {
-    userStartAudio();
-    console.log("Audio habilitado");
+  // botón de permiso
+  let boton = createButton("Activar sensores y audio");
+  boton.position(20, 20);
+  boton.mousePressed(() => {
+    getAudioContext().resume();
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      DeviceOrientationEvent.requestPermission();
+    }
   });
-
-  if (DeviceOrientationEvent.requestPermission) {
-    DeviceOrientationEvent.requestPermission().then(response => {
-      if (response === "granted") {
-        window.addEventListener("deviceorientation", readOrientation);
-      }
-    });
-  } else {
-    window.addEventListener("deviceorientation", readOrientation);
-  }
 }
 
 function draw() {
-  background(200);
+  background(0);
+  textSize(25);
+  fill(255);
+  text("Beta: " + nf(betaValue, 1, 2), 20, 100);
 
-  text(`Alpha: ${alpha}`, 20, 20);
-  text(`Beta: ${beta}`, 20, 50);
-  text(`Gamma: ${gamma}`, 20, 80);
+  checkOrientationLogic();
+}
 
-  // ------------------------------
+function deviceMoved() {
+  betaValue = rotationX;
+}
+
+function checkOrientationLogic() {
+  let now = millis();
+
+  // -------------------------------
+  // NO AL OVERLAP DE AUDIOS
+  // -------------------------------
+  if (currentAudio && currentAudio.isPlaying()) {
+    return;
+  } else {
+    currentAudio = null;
+  }
+
+  // -------------------------------------
   // 1. BETA > 45° → SALTO
-  // ------------------------------
-  if (beta > 45 && beta < 160) {
-    enterState("salto", salto);
-    resetBocaAbajoTimer();
+  // -------------------------------------
+  if (betaValue > 45) {
+    playOnce(salto);
+    resetUpsideDownTimer();
     return;
   }
 
-  // ------------------------------
-  // 2. BETA < -20° → ACELERACIÓN
-  // ------------------------------
-  if (beta < -20) {
-    enterState("aceleracion", aceleracion);
-    resetBocaAbajoTimer();
-    return;
-  }
+  // -------------------------------------
+  // 2. BETA ENTRE 165 Y 195 → BOCA ABAJO
+  // -------------------------------------
+  if (betaValue >= 165 && betaValue <= 195) {
 
-  // ------------------------------
-  // 3. BETA ENTRE 165° Y 195° → BOCA ABAJO
-  // ------------------------------
-  if (beta >= 165 && beta <= 195) {
-    enterState("bocaabajo", bocaabajo);
-
-    if (bocaAbajoStart === null) {
-      bocaAbajoStart = millis();
-      reposoPlayed = false;
-    }
-
-    let elapsed = (millis() - bocaAbajoStart) / 1000;
-
-    if (elapsed >= 25 && !reposoPlayed) {
-      enterState("reposo", reposo);
-      reposoPlayed = true;
+    if (!inUpsideDown) {
+      inUpsideDown = true;
+      lastOrientationStart = now;
+      playOnce(bocaabajo);
+    } else {
+      if (now - lastOrientationStart > 25000) {
+        playOnce(reposo);
+      }
     }
 
     return;
   }
 
-  // ------------------------------
-  // 4. SI NO ESTÁ EN NINGUNA POSICIÓN
-  // ------------------------------
-  enterState("ninguno");
-  resetBocaAbajoTimer();
+  // si sale del rango boca abajo:
+  resetUpsideDownTimer();
 }
 
-// ❗ Maneja entradas a estados SIN repetición ni solapamiento
-function enterState(state, soundToPlay = null) {
-  if (currentState !== state) {
-    currentState = state;
-    stopAllSounds();
+function resetUpsideDownTimer() {
+  inUpsideDown = false;
+}
 
-    if (soundToPlay) {
-      soundToPlay.play();
-    }
+function playOnce(sound) {
+  if (!sound.isPlaying()) {
+    currentAudio = sound;
+    sound.play();
   }
-}
-
-// ❗ Detiene TODOS los sonidos
-function stopAllSounds() {
-  salto.stop();
-  aceleracion.stop();
-  bocaabajo.stop();
-  reposo.stop();
-}
-
-// ❗ Reinicia el contador de 25s boca abajo
-function resetBocaAbajoTimer() {
-  bocaAbajoStart = null;
-  reposoPlayed = false;
-}
-
-function readOrientation(e) {
-  alpha = e.alpha;
-  beta = e.beta;
-  gamma = e.gamma;
 }
