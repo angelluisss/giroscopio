@@ -1,138 +1,134 @@
 let salto, bocaabajo, reposo;
+let betaValue = 0;
 
-let beta = 0;
+let currentAudio = null;
+let lastUpsideDownStart = 0;
+let isUpsideDown = false;
 
-let isPlaying = false;
 let lastAudioTime = 0;
-let cooldown = 2000; // 2 segundos
-
-let isBocaAbajo = false;
-let tiempoInicioBocaAbajo = null;
-let tiempoBocaAbajo = 0;
+let COOLDOWN = 2000;   // 2 segundos
+let REPOSO_TIME = 25000; // 25s
 
 function preload() {
   salto = loadSound("audiosalto.mp3");
-  bocaabajo = loadSound("bocaabajo.mp3");
+  bocaabajo = loadSound("audiobocaabajo.mp3");
   reposo = loadSound("audioreposo.mp3");
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  textAlign(CENTER, CENTER);
-  textSize(24);
 
-  if (typeof DeviceOrientationEvent !== "undefined" &&
-      typeof DeviceOrientationEvent.requestPermission === "function") {
+  let boton = createButton("Activar sensores y audio");
+  boton.position(20, 20);
+  boton.mousePressed(() => {
+    getAudioContext().resume();
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      DeviceOrientationEvent.requestPermission();
+    }
+  });
 
-    let boton = createButton("Activar giroscopio");
-    boton.center();
-    boton.mousePressed(() => {
-      DeviceOrientationEvent.requestPermission().then(permission => {
-        if (permission === "granted") boton.remove();
-      });
-    });
-  }
-}
-
-function deviceOrientationChanged() {
-  beta = rotationX; // rotación vertical
+  textSize(26);
+  textAlign(LEFT, TOP);
 }
 
 function draw() {
-  background(30);
+  background(20);
 
-  const ahora = millis();
-
-  let estado = "normal";
-
-  // ---------------------------------------------------------
-  // DETECCIÓN DE POSTURAS
-  // ---------------------------------------------------------
-
-  // 1️⃣ SALTO → beta > 45 y beta < 180 (vertical hacia adelante)
-  let detectaSalto = beta > 45 && beta < 180;
-
-  // 2️⃣ BOCA ABAJO → beta entre 165° y 195°
-  isBocaAbajo = beta > 165 && beta < 195;
-
-  // ---------------------------------------------------------
-  // CONTROL DEL TIEMPO BOCA ABAJO
-  // ---------------------------------------------------------
-  if (isBocaAbajo) {
-    if (tiempoInicioBocaAbajo === null) {
-      tiempoInicioBocaAbajo = millis();
-    }
-    tiempoBocaAbajo = Math.floor((millis() - tiempoInicioBocaAbajo) / 1000);
-  } else {
-    tiempoInicioBocaAbajo = null;
-    tiempoBocaAbajo = 0;
-
-    // Si sale de la postura, detener audio reposo
-    if (reposo.isPlaying()) reposo.stop();
-  }
-
-  // ---------------------------------------------------------
-  // REPRODUCCIÓN DE AUDIOS (con cooldown + no solapar)
-  // ---------------------------------------------------------
-  if (!isPlaying && ahora - lastAudioTime > cooldown) {
-
-    // 1️⃣ BOCA ABAJO inmediato → bocaabajo.mp3
-    if (isBocaAbajo && !bocaabajo.isPlaying() && tiempoBocaAbajo < 25) {
-      reproducirAudio(bocaabajo);
-      estado = "boca abajo";
-    }
-
-    // 2️⃣ REPOSO → si lleva 25 segundos boca abajo
-    else if (isBocaAbajo && tiempoBocaAbajo >= 25 && !reposo.isPlaying()) {
-      reproducirAudio(reposo);
-      estado = "reposo";
-    }
-
-    // 3️⃣ SALTO → si se inclina más de 45°
-    else if (detectaSalto) {
-      reproducirAudio(salto);
-      estado = "salto";
-    }
-  }
-
-  // ---------------------------------------------------------
-  // VISUALIZADOR DEL TIEMPO BOCA ABAJO
-  // ---------------------------------------------------------
-  if (isBocaAbajo) {
-    if (tiempoBocaAbajo < 10) fill(0, 255, 0);
-    else if (tiempoBocaAbajo < 20) fill(255, 200, 0);
-    else fill(255, 0, 0);
-
-    text("Tiempo boca abajo: " + tiempoBocaAbajo + "s", width / 2, height - 50);
-  } else {
-    fill(180);
-    text("Tiempo boca abajo: 0s", width / 2, height - 50);
-  }
-
-  // ---------------------------------------------------------
-  // VISUAL DE ESTADO Y ÁNGULO
-  // ---------------------------------------------------------
-  fill(255);
-  text("β = " + nf(beta, 1, 1), width / 2, height / 2 - 50);
-  text("Estado: " + estado, width / 2, height / 2);
+  drawUI();
+  drawUpsideDownTimer();
+  handleLogic();
 }
 
-function reproducirAudio(audio) {
-  if (isPlaying) return;
+function deviceMoved() {
+  betaValue = rotationX;
+}
 
-  detenerTodos();
+function handleLogic() {
+  let now = millis();
 
-  audio.play();
-  isPlaying = true;
+  // cooldown global
+  if (now - lastAudioTime < COOLDOWN) return;
 
-  audio.onended(() => {
-    isPlaying = false;
+  // evitar overlap
+  if (currentAudio && currentAudio.isPlaying() && currentAudio !== reposo) return;
+
+  currentAudio = null;
+
+  // SALTO (45° a 180°)
+  if (betaValue > 45 && betaValue < 180) {
+    if (!(betaValue >= 165 && betaValue <= 195)) {
+      interruptRestAudio();
+      playOnce(salto);
+      resetUpsideDownState();
+      return;
+    }
+  }
+
+  // BOCA ABAJO (165° a 195°)
+  if (betaValue >= 165 && betaValue <= 195) {
+
+    interruptRestAudio();
+
+    if (!isUpsideDown) {
+      isUpsideDown = true;
+      lastUpsideDownStart = now;
+      playOnce(bocaabajo);
+    } else {
+      if (now - lastUpsideDownStart > REPOSO_TIME) {
+        playOnce(reposo);
+      }
+    }
+    return;
+  }
+
+  // Si salió de boca abajo
+  resetUpsideDownState();
+}
+
+function resetUpsideDownState() {
+  isUpsideDown = false;
+}
+
+function playOnce(sound) {
+  if (!sound.isPlaying()) {
+    currentAudio = sound;
+    sound.play();
     lastAudioTime = millis();
-  });
+  }
 }
 
-function detenerTodos() {
-  if (salto.isPlaying()) salto.stop();
-  if (bocaabajo.isPlaying()) bocaabajo.stop();
+function interruptRestAudio() {
   if (reposo.isPlaying()) reposo.stop();
+}
+
+function drawUI() {
+  fill(255);
+  text("Inclinación (β): " + nf(betaValue, 1, 2), 20, 80);
+
+  noStroke();
+  
+  // Barra decorativa inferior según beta
+  let mapColor = map(betaValue, -180, 180, 0, 255);
+  fill(mapColor, 120, 255 - mapColor);
+  rect(0, height - 30, map(betaValue, -180, 180, 0, width), 30);
+}
+
+function drawUpsideDownTimer() {
+  if (!isUpsideDown) return;
+
+  let elapsed = millis() - lastUpsideDownStart;
+  let remaining = REPOSO_TIME - elapsed;
+
+  if (remaining <= 0) return;
+
+  let sec = nf(remaining / 1000, 1, 1);
+
+  fill(200, 240, 255);
+  text("Reposo en: " + sec + " s", 20, 130);
+
+  // barra visual de progreso
+  let progress = map(elapsed, 0, REPOSO_TIME, 0, width - 40);
+  fill(50, 180, 255);
+  rect(20, 170, progress, 20);
 }
