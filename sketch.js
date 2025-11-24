@@ -8,7 +8,8 @@ let alpha = 0;
 let beta = 0;
 let gamma = 0;
 
-let bocaAbajoStart = null; // Tiempo cuando entra a la posición
+let bocaAbajoStart = null; 
+let currentState = ""; // 👉 previene solapamientos
 let reposoPlayed = false;
 
 function preload() {
@@ -31,15 +32,12 @@ function setup() {
     console.log("Audio habilitado");
   });
 
-  if (typeof DeviceOrientationEvent !== "undefined" &&
-      typeof DeviceOrientationEvent.requestPermission === "function") {
-
+  if (DeviceOrientationEvent.requestPermission) {
     DeviceOrientationEvent.requestPermission().then(response => {
       if (response === "granted") {
         window.addEventListener("deviceorientation", readOrientation);
       }
     });
-
   } else {
     window.addEventListener("deviceorientation", readOrientation);
   }
@@ -52,67 +50,73 @@ function draw() {
   text(`Beta: ${beta}`, 20, 50);
   text(`Gamma: ${gamma}`, 20, 80);
 
-  // ----- 1. Sonido salto (beta > 45°) -----
+  // ------------------------------
+  // 1. BETA > 45° → SALTO
+  // ------------------------------
   if (beta > 45 && beta < 160) {
-    stopAllExcept(salto);
-    salto.play();
+    enterState("salto", salto);
     resetBocaAbajoTimer();
+    return;
   }
 
-  // ----- 2. Sonido aceleración (beta < -20°) -----
-  else if (beta < -20) {
-    stopAllExcept(aceleracion);
-    aceleracion.play();
+  // ------------------------------
+  // 2. BETA < -20° → ACELERACIÓN
+  // ------------------------------
+  if (beta < -20) {
+    enterState("aceleracion", aceleracion);
     resetBocaAbajoTimer();
+    return;
   }
 
-  // ----- 3. Sonido boca abajo (beta entre 165° y 195°) -----
-  else if (beta >= 165 && beta <= 195) {
+  // ------------------------------
+  // 3. BETA ENTRE 165° Y 195° → BOCA ABAJO
+  // ------------------------------
+  if (beta >= 165 && beta <= 195) {
+    enterState("bocaabajo", bocaabajo);
 
-    stopAllExcept(bocaabajo);
-
-    if (!bocaabajo.isPlaying()) bocaabajo.play();
-
-    // Iniciar temporizador si no ha comenzado
     if (bocaAbajoStart === null) {
       bocaAbajoStart = millis();
       reposoPlayed = false;
     }
 
-    // Si lleva más de 25s en posición boca abajo → reproduce reposo
     let elapsed = (millis() - bocaAbajoStart) / 1000;
+
     if (elapsed >= 25 && !reposoPlayed) {
-      stopAllExcept(reposo);
-      reposo.play();
+      enterState("reposo", reposo);
       reposoPlayed = true;
     }
+
+    return;
   }
 
-  // ----- 4. Cualquier otra posición -----
-  else {
-    stopAll();
-    resetBocaAbajoTimer();
+  // ------------------------------
+  // 4. SI NO ESTÁ EN NINGUNA POSICIÓN
+  // ------------------------------
+  enterState("ninguno");
+  resetBocaAbajoTimer();
+}
+
+// ❗ Maneja entradas a estados SIN repetición ni solapamiento
+function enterState(state, soundToPlay = null) {
+  if (currentState !== state) {
+    currentState = state;
+    stopAllSounds();
+
+    if (soundToPlay) {
+      soundToPlay.play();
+    }
   }
 }
 
-// -------- FUNCIONES AUXILIARES --------
-
-function stopAll() {
-  sound.stop();
+// ❗ Detiene TODOS los sonidos
+function stopAllSounds() {
   salto.stop();
   aceleracion.stop();
   bocaabajo.stop();
   reposo.stop();
 }
 
-function stopAllExcept(audio) {
-  if (audio !== sound) sound.stop();
-  if (audio !== salto) salto.stop();
-  if (audio !== aceleracion) aceleracion.stop();
-  if (audio !== bocaabajo) bocaabajo.stop();
-  if (audio !== reposo) reposo.stop();
-}
-
+// ❗ Reinicia el contador de 25s boca abajo
 function resetBocaAbajoTimer() {
   bocaAbajoStart = null;
   reposoPlayed = false;
