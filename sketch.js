@@ -2,8 +2,8 @@ let salto, bocaabajo, reposo;
 let betaValue = 0;
 
 let currentAudio = null;
-let lastOrientationStart = 0;
-let inUpsideDown = false;
+let lastUpsideDownStart = 0;
+let isUpsideDown = false;
 
 function preload() {
   salto = loadSound("audiosalto.mp3");
@@ -14,11 +14,11 @@ function preload() {
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
-  // botón de permiso
   let boton = createButton("Activar sensores y audio");
   boton.position(20, 20);
   boton.mousePressed(() => {
     getAudioContext().resume();
+
     if (typeof DeviceOrientationEvent !== "undefined" &&
         typeof DeviceOrientationEvent.requestPermission === "function") {
       DeviceOrientationEvent.requestPermission();
@@ -27,50 +27,53 @@ function setup() {
 }
 
 function draw() {
-  background(0);
-  textSize(25);
+  background(30);
   fill(255);
-  text("Beta: " + nf(betaValue, 1, 2), 20, 100);
+  textSize(26);
+  text("Beta: " + nf(betaValue, 1, 2), 20, 80);
 
-  checkOrientationLogic();
+  handleLogic();
 }
 
 function deviceMoved() {
   betaValue = rotationX;
 }
 
-function checkOrientationLogic() {
+function handleLogic() {
   let now = millis();
 
-  // -------------------------------
-  // NO AL OVERLAP DE AUDIOS
-  // -------------------------------
-  if (currentAudio && currentAudio.isPlaying()) {
-    return;
-  } else {
-    currentAudio = null;
+  // No permitir overlap de audios
+  if (currentAudio && currentAudio.isPlaying()) return;
+  currentAudio = null;
+
+  // -----------------------------
+  // 📌 REGLA 1: SALTO
+  // beta entre 45° y 180°
+  // -----------------------------
+  if (betaValue > 45 && betaValue < 180) {
+    // Solo si NO está boca abajo
+    if (!(betaValue >= 165 && betaValue <= 195)) {
+      playOnce(salto);
+      resetUpsideDownState();
+      return;
+    }
   }
 
-  // -------------------------------------
-  // 1. BETA > 45° → SALTO
-  // -------------------------------------
-  if (betaValue > 45) {
-    playOnce(salto);
-    resetUpsideDownTimer();
-    return;
-  }
-
-  // -------------------------------------
-  // 2. BETA ENTRE 165 Y 195 → BOCA ABAJO
-  // -------------------------------------
+  // -----------------------------
+  // 📌 REGLA 2: BOCA ABAJO
+  // 165°–195° = boca abajo
+  // -----------------------------
   if (betaValue >= 165 && betaValue <= 195) {
-
-    if (!inUpsideDown) {
-      inUpsideDown = true;
-      lastOrientationStart = now;
+    
+    if (!isUpsideDown) {
+      // Entró en posición boca abajo
+      isUpsideDown = true;
+      lastUpsideDownStart = now;
       playOnce(bocaabajo);
+      
     } else {
-      if (now - lastOrientationStart > 25000) {
+      // Lleva tiempo boca abajo → 25s = REPOSO
+      if (now - lastUpsideDownStart > 25000) {
         playOnce(reposo);
       }
     }
@@ -78,12 +81,12 @@ function checkOrientationLogic() {
     return;
   }
 
-  // si sale del rango boca abajo:
-  resetUpsideDownTimer();
+  // Si sale del rango boca abajo → reinicia contador
+  resetUpsideDownState();
 }
 
-function resetUpsideDownTimer() {
-  inUpsideDown = false;
+function resetUpsideDownState() {
+  isUpsideDown = false;
 }
 
 function playOnce(sound) {
