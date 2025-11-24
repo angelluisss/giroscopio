@@ -2,6 +2,7 @@ let salto, bocaabajo, reposo;
 let betaValue = 0;
 
 // Estados
+
 let currentAudio = null;
 let isUpsideDown = false;
 let lastUpsideDownStart = 0;
